@@ -65,7 +65,6 @@ def main(text_widget):
         clipboard_content = pyperclip.paste().strip()
         content_type = determine_content_type(clipboard_content)
 
-        # Only process valid content types
         if content_type and clipboard_content and clipboard_content != last_content:
             if clipboard_content not in scanned_content:
                 try:
