@@ -35,8 +35,21 @@ def scan_content(content, content_type):
 
     if 'error' in response_data and response_data['error']['code'] == 'NotFoundError':
         return {"Content": urllib.parse.unquote(content), "Error": "Resource not found in VirusTotal database."}
+
+    data = response_data.get("data", {}).get("attributes", {})
     
-    return response_data
+    result = {
+        "Content": urllib.parse.unquote(content),
+        "Last Analysis Date": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(data.get("last_analysis_date", 0))),
+        "Reputation": data.get("reputation"),
+        "Total Votes": data.get("total_votes"),
+        "Categories": data.get("categories"),
+        "Last Analysis Stats": data.get("last_analysis_stats"),
+        "Scans": {engine: result["result"] for engine, result in data.get("scans", {}).items()},
+    }
+
+    return result
+
 
 def update_text(text_widget, text):
     text_widget.config(state=tk.NORMAL)
@@ -69,7 +82,7 @@ def main(text_widget):
     last_content = ""
     scanned_content = load_scanned_content()  
 
-    while True:
+    while True: 
         if request_count >= requests_per_minute:
             time.sleep(60 - (time.time() - start_time))
             request_count = 0
@@ -81,23 +94,25 @@ def main(text_widget):
         if content_type and clipboard_content and clipboard_content != last_content:
             if clipboard_content not in scanned_content:
                 try:
-                    if content_type == 'urls':
-                        clipboard_content_encoded = requests.utils.quote(clipboard_content, safe='')
-                    else:
-                        clipboard_content_encoded = clipboard_content
-                    
                     result = scan_content(clipboard_content, content_type)
-    
-                    decoded_content = urllib.parse.unquote(clipboard_content_encoded)
+                    decoded_content = urllib.parse.unquote(clipboard_content)
 
                     if "Error" in result:
                         update_text(text_widget, f"Error: {result['Error']}")
                     else:
-                        filtered_result = {
-                            "Content": decoded_content,
-                            "Last Analysis Stats": result.get("data", {}).get("attributes", {}).get("last_analysis_stats"),
-                        }
-                        update_text(text_widget, json.dumps(filtered_result, indent=4))
+                        
+                        display_text = f"Content: {result['Content']}\n\n"
+                        display_text += f"Last Analysis Date: {result['Last Analysis Date']}\n\n"
+                        display_text += f"Reputation: {result['Reputation']}\n\n"
+                        display_text += f"Total Votes: {result['Total Votes']}\n\n"
+                        display_text += f"Categories: {result['Categories']}\n\n"
+                        display_text += f"Last Analysis Stats: {json.dumps(result['Last Analysis Stats'], indent=4)}\n\n"
+                        display_text += f"Scans:\n"
+
+                        for engine, scan_result in result['Scans'].items():
+                            display_text += f"  {engine}: {scan_result}\n"
+                        
+                        update_text(text_widget, display_text)
                     
                     scanned_content.add(clipboard_content)  
                     save_scanned_content(scanned_content) 
@@ -106,6 +121,7 @@ def main(text_widget):
                     update_text(text_widget, f"Error: {e}")
             last_content = clipboard_content
         time.sleep(1)
+
 
 if __name__ == "__main__":
     root = tk.Tk()
