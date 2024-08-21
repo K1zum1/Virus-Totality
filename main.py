@@ -27,9 +27,7 @@ def scan_content(content, content_type):
     else:
         url = f'https://www.virustotal.com/api/v3/{content_type}/{content}'
 
-    headers = {
-        "x-apikey": api_key  
-    }
+    headers = {"x-apikey": api_key}
     response = requests.get(url, headers=headers)
     response_data = response.json()
 
@@ -51,9 +49,13 @@ def scan_content(content, content_type):
     return result
 
 
-def update_text(text_widget, text):
+def update_text(text_widget, text, bold=False, color=None):
     text_widget.config(state=tk.NORMAL)
-    text_widget.insert(tk.END, text + '\n')
+    tag = None
+    if bold or color:
+        tag = f"tag_{bold}_{color}"
+        text_widget.tag_configure(tag, font=('Courier', 10, 'bold') if bold else None, foreground=color)
+    text_widget.insert(tk.END, text + '\n', tag)
     text_widget.config(state=tk.DISABLED)
     text_widget.see(tk.END)
 
@@ -80,7 +82,7 @@ def save_scanned_content(scanned_content):
 def main(text_widget):
     global request_count, start_time
     last_content = ""
-    scanned_content = load_scanned_content()  
+    scanned_content = load_scanned_content()
 
     while True: 
         if request_count >= requests_per_minute:
@@ -95,42 +97,46 @@ def main(text_widget):
             if clipboard_content not in scanned_content:
                 try:
                     result = scan_content(clipboard_content, content_type)
-                    decoded_content = urllib.parse.unquote(clipboard_content)
 
                     if "Error" in result:
-                        update_text(text_widget, f"Error: {result['Error']}")
+                        update_text(text_widget, f"Error: {result['Error']}", bold=True, color="red")
                     else:
+                        update_text(text_widget, f"Content: {result['Content']}\n", bold=True, color="light blue")
+                        update_text(text_widget, f"Last Analysis Date: {result['Last Analysis Date']}")
+                        update_text(text_widget, f"Reputation: {result['Reputation']}")
                         
-                        display_text = f"Content: {result['Content']}\n\n"
-                        display_text += f"Last Analysis Date: {result['Last Analysis Date']}\n\n"
-                        display_text += f"Reputation: {result['Reputation']}\n\n"
-                        display_text += f"Total Votes: {result['Total Votes']}\n\n"
-                        display_text += f"Categories: {result['Categories']}\n\n"
-                        display_text += f"Last Analysis Stats: {json.dumps(result['Last Analysis Stats'], indent=4)}\n\n"
-                        display_text += f"Scans:\n"
+                        votes = result['Total Votes']
+                        update_text(text_widget, f"Total Votes:\n  Harmless: {votes.get('harmless', 0)}\n  Malicious: {votes.get('malicious', 0)}")
 
-                        for engine, scan_result in result['Scans'].items():
-                            display_text += f"  {engine}: {scan_result}\n"
+                        update_text(text_widget, "Categories: " + (", ".join(result['Categories'].values()) if result['Categories'] else "None"))
                         
-                        update_text(text_widget, display_text)
-                    
-                    scanned_content.add(clipboard_content)  
-                    save_scanned_content(scanned_content) 
+                        stats = result['Last Analysis Stats']
+                        update_text(text_widget, "Last Analysis Stats:")
+                        for key, value in stats.items():
+                            update_text(text_widget, f"  {key.capitalize()}: {value}")
+
+                        update_text(text_widget, "Scans:")
+                        for engine, scan_result in result['Scans'].items():
+                            update_text(text_widget, f"  {engine}: {scan_result}", color="light green")
+
+                    scanned_content.add(clipboard_content)
+                    save_scanned_content(scanned_content)
                     request_count += 1
                 except Exception as e:
-                    update_text(text_widget, f"Error: {e}")
+                    update_text(text_widget, f"Error: {e}", bold=True, color="red")
             last_content = clipboard_content
         time.sleep(1)
-
 
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("Content Scanner")
-    root.geometry("500x500")
+    root.geometry("600x600")
     text = scrolledtext.ScrolledText(root, bg='black', fg='light green', font=("Courier", 10))
     text.pack(fill=tk.BOTH, expand=True)
     thread = Thread(target=main, args=(text,))
-    initial_message = "Welcome to the Virus Totality!\n\nCopy any URL, IP address, domain, or file hash to the clipboard, and it will be automatically scanned using the VirusTotal API.\n"
-    update_text(text, initial_message)
+    initial_message = ("Welcome to Virus Totality!\n\n"
+                       "Copy any URL, IP address, domain, or file hash to the clipboard, "
+                       "and it will be automatically scanned using the VirusTotal API.\n")
+    update_text(text, initial_message, bold=True, color="yellow")
     thread.start()
     root.mainloop()
